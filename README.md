@@ -1,97 +1,200 @@
-This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
+# React Native Camera App - Complete Project Setup
 
-# Getting Started
+## Prerequisites
+- Node.js (v16 or higher)
+- React Native CLI
+- Android Studio (for Android development)
+- Xcode (for iOS development - Mac only)
 
-> **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.
+## Project Creation Commands
 
-## Step 1: Start Metro
+```bash
+# Install React Native CLI globally
+npm install -g react-native-cli
 
-First, you will need to run **Metro**, the JavaScript build tool for React Native.
+# Create new React Native project
+npx react-native init CameraApp --version 0.72.0
 
-To start the Metro dev server, run the following command from the root of your React Native project:
+# Navigate to project directory
+cd CameraApp
 
-```sh
-# Using npm
-npm start
+# Install required dependencies
+npm install react-native-vision-camera react-native-permissions @react-native-async-storage/async-storage react-native-fs @react-native-community/geolocation react-native-device-info react-native-vector-icons
 
-# OR using Yarn
-yarn start
+# For iOS (if developing for iOS)
+cd ios && pod install && cd ..
 ```
 
-## Step 2: Build and run your app
+## Project Structure
 
-With Metro running, open a new terminal window/pane from the root of your React Native project, and use one of the following commands to build and run your Android or iOS app:
-
-### Android
-
-```sh
-# Using npm
-npm run android
-
-# OR using Yarn
-yarn android
+```
+CameraApp/
+├── android/
+├── ios/
+├── src/
+│   ├── components/
+│   │   ├── Camera/
+│   │   │   ├── CameraScreen.js
+│   │   │   ├── CameraOverlay.js
+│   │   │   └── VideoStamp.js
+│   │   ├── Settings/
+│   │   │   ├── SettingsScreen.js
+│   │   │   ├── ThemeSettings.js
+│   │   │   ├── VideoSettings.js
+│   │   │   ├── TimestampSettings.js
+│   │   │   └── LocationSettings.js
+│   │   └── Common/
+│   │       ├── Header.js
+│   │       └── Button.js
+│   ├── utils/
+│   │   ├── permissions.js
+│   │   ├── storage.js
+│   │   ├── location.js
+│   │   ├── fileManager.js
+│   │   └── constants.js
+│   ├── styles/
+│   │   ├── colors.js
+│   │   └── commonStyles.js
+│   └── hooks/
+│       ├── useLocation.js
+│       ├── useSettings.js
+│       └── usePermissions.js
+├── App.js
+├── package.json
+└── README.md
 ```
 
-### iOS
+## File Creation Commands
 
-For iOS, remember to install CocoaPods dependencies (this only needs to be run on first clone or after updating native deps).
+```bash
+# Create main directories
+mkdir -p src/components/Camera
+mkdir -p src/components/Settings
+mkdir -p src/components/Common
+mkdir -p src/utils
+mkdir -p src/styles
+mkdir -p src/hooks
 
-The first time you create a new project, run the Ruby bundler to install CocoaPods itself:
+# Create component files
+touch src/components/Camera/CameraScreen.js
+touch src/components/Camera/CameraOverlay.js
+touch src/components/Camera/VideoStamp.js
+touch src/components/Settings/SettingsScreen.js
+touch src/components/Settings/ThemeSettings.js
+touch src/components/Settings/VideoSettings.js
+touch src/components/Settings/TimestampSettings.js
+touch src/components/Settings/LocationSettings.js
+touch src/components/Common/Header.js
+touch src/components/Common/Button.js
 
-```sh
-bundle install
+# Create utility files
+touch src/utils/permissions.js
+touch src/utils/storage.js
+touch src/utils/location.js
+touch src/utils/fileManager.js
+touch src/utils/constants.js
+
+# Create style files
+touch src/styles/colors.js
+touch src/styles/commonStyles.js
+
+# Create hook files
+touch src/hooks/useLocation.js
+touch src/hooks/useSettings.js
+touch src/hooks/usePermissions.js
 ```
 
-Then, and every time you update your native dependencies, run:
+## Android Permissions Setup
 
-```sh
-bundle exec pod install
+Add the following permissions to `android/app/src/main/AndroidManifest.xml`:
+
+```xml
+<uses-permission android:name="android.permission.CAMERA" />
+<uses-permission android:name="android.permission.RECORD_AUDIO" />
+<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+<uses-feature android:name="android.hardware.camera" android:required="true" />
+<uses-feature android:name="android.hardware.camera.autofocus" />
 ```
 
-For more information, please visit [CocoaPods Getting Started guide](https://guides.cocoapods.org/using/getting-started.html).
+## iOS Info.plist Setup (if targeting iOS)
 
-```sh
-# Using npm
-npm run ios
+Add the following to `ios/CameraApp/Info.plist`:
 
-# OR using Yarn
-yarn ios
+```xml
+<key>NSCameraUsageDescription</key>
+<string>This app needs camera access to record videos</string>
+<key>NSMicrophoneUsageDescription</key>
+<string>This app needs microphone access to record audio with videos</string>
+<key>NSLocationWhenInUseUsageDescription</key>
+<string>This app needs location access to add location stamps to videos</string>
+<key>NSPhotoLibraryUsageDescription</key>
+<string>This app needs photo library access to save recorded videos</string>
 ```
 
-If everything is set up correctly, you should see your new app running in the Android Emulator, iOS Simulator, or your connected device.
+## Build and Run Commands
 
-This is one way to run your app — you can also build it directly from Android Studio or Xcode.
+```bash
+# For Android
+npx react-native run-android
 
-## Step 3: Modify your app
+# For iOS (Mac only)
+npx react-native run-ios
 
-Now that you have successfully run the app, let's make changes!
+# Clean build (if needed)
+npx react-native clean
 
-Open `App.tsx` in your text editor of choice and make some changes. When you save, your app will automatically update and reflect these changes — this is powered by [Fast Refresh](https://reactnative.dev/docs/fast-refresh).
+# Reset Metro cache
+npx react-native start --reset-cache
+```
 
-When you want to forcefully reload, for example to reset the state of your app, you can perform a full reload:
+## Additional Setup Commands
 
-- **Android**: Press the <kbd>R</kbd> key twice or select **"Reload"** from the **Dev Menu**, accessed via <kbd>Ctrl</kbd> + <kbd>M</kbd> (Windows/Linux) or <kbd>Cmd ⌘</kbd> + <kbd>M</kbd> (macOS).
-- **iOS**: Press <kbd>R</kbd> in iOS Simulator.
+```bash
+# Link vector icons for Android
+npx react-native link react-native-vector-icons
 
-## Congratulations! :tada:
+# For newer versions, add to android/app/build.gradle:
+# apply from: "../../node_modules/react-native-vector-icons/fonts.gradle"
+```
 
-You've successfully run and modified your React Native App. :partying_face:
+## File Contents Preview
 
-### Now what?
+The project will include:
 
-- If you want to add this new React Native code to an existing application, check out the [Integration guide](https://reactnative.dev/docs/integration-with-existing-apps).
-- If you're curious to learn more about React Native, check out the [docs](https://reactnative.dev/docs/getting-started).
+1. **Main App Component** (`App.js`) - Navigation between Camera and Settings
+2. **Camera Components**:
+   - `CameraScreen.js` - Main camera interface
+   - `CameraOverlay.js` - UI overlay with controls
+   - `VideoStamp.js` - Date/time/location stamping
+3. **Settings Components**:
+   - `SettingsScreen.js` - Main settings interface
+   - Various setting-specific components
+4. **Utility Functions**:
+   - Permission handling
+   - Local storage
+   - Location services
+   - File management
+5. **Styling** - Consistent theme support
 
-# Troubleshooting
+## Development Workflow
 
-If you're having issues getting the above steps to work, see the [Troubleshooting](https://reactnative.dev/docs/troubleshooting) page.
+1. Start the project with the commands above
+2. Implement components step by step
+3. Test on physical device (camera requires real device)
+4. Add API integration for video upload
+5. Test auto-delete functionality
 
-# Learn More
+## Next Steps
 
-To learn more about React Native, take a look at the following resources:
+After running these setup commands, I'll provide the complete implementation for each file. The app will support:
 
-- [React Native Website](https://reactnative.dev) - learn more about React Native.
-- [Getting Started](https://reactnative.dev/docs/environment-setup) - an **overview** of React Native and how setup your environment.
-- [Learn the Basics](https://reactnative.dev/docs/getting-started) - a **guided tour** of the React Native **basics**.
-- [Blog](https://reactnative.dev/blog) - read the latest official React Native **Blog** posts.
-- [`@facebook/react-native`](https://github.com/facebook/react-native) - the Open Source; GitHub **repository** for React Native.
+- Video recording with stamps
+- Settings persistence
+- Theme switching
+- Resolution selection
+- Location tagging
+- Auto-delete functionality
+- Clean, simple UI
