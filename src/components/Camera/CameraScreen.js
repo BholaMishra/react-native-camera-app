@@ -23,14 +23,22 @@ const CameraScreen = ({onNavigateToSettings, theme}) => {
   const [settings, setSettings] = useState(null);
   const [currentLocation, setCurrentLocation] = useState(null);
   const [recordingTime, setRecordingTime] = useState(0);
-  const [currentResolution, setCurrentResolution] = useState('1080p');
+  const [currentResolution, setCurrentResolution] = useState('720p'); // Default to 720p
   const [cameraPermission, setCameraPermission] = useState('not-determined');
   
   // Get camera device
   const device = useCameraDevice('back');
   
-  // Get camera format based on resolution
+  // Get camera format based on resolution - FORCE 720p for file size control
   const getTargetResolution = () => {
+    // Force 720p resolution to maintain file size control
+    if (currentResolution === '720p') {
+      return {
+        width: 1280,
+        height: 720,
+      };
+    }
+    // For other resolutions, still use controlled settings
     const quality = VIDEO_QUALITIES[currentResolution];
     if (quality && quality.width !== 'auto') {
       return {
@@ -38,12 +46,15 @@ const CameraScreen = ({onNavigateToSettings, theme}) => {
         height: quality.height,
       };
     }
-    return {width: 1920, height: 1080}; // Default 1080p
+    return {width: 1280, height: 720}; // Default to 720p
   };
   
   const targetResolution = getTargetResolution();
+  
+  // Get format with specific resolution and fps control
   const format = useCameraFormat(device, [
     {videoResolution: targetResolution},
+    {fps: 30}, // Limit to 30fps to control bitrate
   ]);
 
   // Check camera permission on mount
@@ -95,13 +106,13 @@ const CameraScreen = ({onNavigateToSettings, theme}) => {
     try {
       const appSettings = await getSettings();
       setSettings(appSettings);
-      setCurrentResolution(appSettings.videoQuality || '1080p');
+      // Force 720p for file size control
+      setCurrentResolution('720p');
     } catch (error) {
       console.log('Error loading settings:', error);
-      // Set default settings if loading fails
       setSettings({
         locationEnabled: true,
-        videoQuality: '1080p',
+        videoQuality: '720p',
         dateFormat: 'DD/MM/YYYY',
         timeFormat: '12_HOUR',
         theme: 'system',
@@ -132,42 +143,59 @@ const CameraScreen = ({onNavigateToSettings, theme}) => {
     }
   };
 
-  // FIXED: Updated video compression settings for target file size
+  // CORRECTED: Proper video settings for exact file size control
   const getVideoSettings = () => {
-    const quality = VIDEO_QUALITIES[currentResolution];
+    // Target: 40-55 MB for 3 minutes (180 seconds)
+    // Conservative bitrate calculation for consistent results
     
-    // Calculate appropriate bitrate for target file size
-    // Target: 45-55 MB for 3 minutes (180 seconds)
-    // Formula: (Target MB * 8 * 1024 * 1024) / duration_seconds = bits per second
     const getBitRate = () => {
       switch (currentResolution) {
         case '720p':
-          // Target: ~50 MB for 3 minutes
-          // (50 * 8 * 1024 * 1024) / 180 = ~2.3 MB/s = ~18.4 Mbps
-          // But we need to account for audio bitrate (~128 kbps)
-          // So video bitrate should be ~18 Mbps
-          return 18000000; // 18 Mbps - This will give ~45-55 MB for 3 minutes
+          // Much lower bitrate for 40-55 MB target
+          // (50 MB * 8 bits/byte * 1024 * 1024) / 180 seconds ≈ 2.3 Mbps total
+          // Video should be ~2 Mbps, Audio ~128 kbps
+          return 2000000; // 2 Mbps - This will give ~40-50 MB for 3 minutes
         case '1080p':
-          return 25000000; // 25 Mbps for 1080p
+          return 3000000; // 3 Mbps for 1080p
         case '4K':
-          return 50000000; // 50 Mbps for 4K
+          return 8000000; // 8 Mbps for 4K
         default:
-          return 18000000; // Default to 720p high bitrate
+          return 2000000; // Default to conservative 720p bitrate
       }
     };
 
-    // Audio bitrate for high quality audio
     const getAudioBitRate = () => {
-      return 256000; // 256 kbps for high quality audio
+      return 128000; // 128 kbps - standard audio quality
     };
 
+    console.log('=== VIDEO ENCODING SETTINGS ===');
+    console.log('Resolution:', currentResolution);
+    console.log('Video Bitrate:', getBitRate(), 'bps');
+    console.log('Audio Bitrate:', getAudioBitRate(), 'bps');
+    console.log('Expected 3min size: ~45 MB');
+
     return {
+      // Core encoding settings
       videoBitRate: getBitRate(),
       audioBitRate: getAudioBitRate(),
-      videoCodec: 'h264', // Use H.264 for compatibility
+      videoCodec: 'h264',
       fileType: 'mp4',
-      // Additional quality settings
-      videoQuality: 'high', // Use high quality preset
+      
+      // Additional compression settings
+      fps: 30, // Limit frame rate
+      quality: 'medium', // Use medium quality preset
+      
+      // Platform specific settings
+      ...(Platform.OS === 'android' && {
+        // Android specific settings
+        videoProfile: 'baseline', // More compressed profile
+        videoLevel: '3.1',
+      }),
+      
+      ...(Platform.OS === 'ios' && {
+        // iOS specific settings
+        videoQuality: 'medium',
+      }),
     };
   };
 
@@ -178,12 +206,12 @@ const CameraScreen = ({onNavigateToSettings, theme}) => {
         setRecordingTime(0);
         
         console.log('Starting recording with resolution:', currentResolution);
+        console.log('Target resolution:', targetResolution);
         
         const videoSettings = getVideoSettings();
-        console.log('Video settings:', videoSettings);
-        console.log('Expected file size for 3 minutes: ~50 MB');
+        console.log('Applied video settings:', videoSettings);
         
-        // Start recording with high quality settings
+        // Start recording with conservative settings
         camera.current.startRecording({
           ...videoSettings,
           onRecordingFinished: (video) => {
@@ -224,9 +252,23 @@ const CameraScreen = ({onNavigateToSettings, theme}) => {
       console.log('Video path:', video.path);
       console.log('Recording duration:', recordingTime, 'seconds');
       
-      // Calculate expected file size
-      const expectedSizeMB = (recordingTime / 180) * 50; // Scale based on 50MB for 3 minutes
+      // Calculate expected vs actual
+      const expectedSizeMB = (recordingTime * 2.5) / 60; // ~2.5 MB per minute at 2 Mbps
       console.log(`Expected file size: ~${expectedSizeMB.toFixed(1)} MB`);
+      
+      // Check actual file size if possible
+      const RNFS = require('react-native-fs');
+      try {
+        const fileStats = await RNFS.stat(video.path);
+        const actualSizeMB = fileStats.size / (1024 * 1024);
+        console.log(`Actual file size: ${actualSizeMB.toFixed(1)} MB`);
+        
+        if (actualSizeMB > 80) {
+          console.warn('⚠️ File size larger than expected! Bitrate settings may not be applied correctly.');
+        }
+      } catch (statError) {
+        console.log('Could not get file stats:', statError);
+      }
       
       // Save video with metadata
       const result = await saveVideoToGallery(video.path, {
@@ -236,25 +278,22 @@ const CameraScreen = ({onNavigateToSettings, theme}) => {
         resolution: currentResolution,
         duration: recordingTime,
         videoSettings: getVideoSettings(),
-        expectedSize: expectedSizeMB,
+        targetSize: `${expectedSizeMB.toFixed(1)} MB`,
       });
       
       console.log('Video save result:', result);
       
       Alert.alert(
         'Success', 
-        `Video saved to gallery!\nDuration: ${recordingTime}s\nExpected size: ~${expectedSizeMB.toFixed(1)} MB\n\nCheck your Photos app in the "CameraApp" album.`,
+        `Video saved to gallery!\nDuration: ${Math.floor(recordingTime/60)}:${(recordingTime%60).toString().padStart(2,'0')}\nTarget: ~${expectedSizeMB.toFixed(1)} MB\n\nCheck your Photos app in the "CameraApp" album.`,
         [{ text: 'OK' }]
       );
-      
-      // TODO: Push to API if required
-      // await pushToAPI(video.path);
       
     } catch (error) {
       console.error('Error saving video:', error);
       Alert.alert(
         'Save Error', 
-        `Failed to save video to gallery: ${error.message}`,
+        `Failed to save video: ${error.message}`,
         [
           { text: 'OK' },
           { 
@@ -276,12 +315,20 @@ const CameraScreen = ({onNavigateToSettings, theme}) => {
 
   const changeResolution = (resolution) => {
     if (!isRecording) {
+      // Force 720p for file size control
+      if (resolution !== '720p') {
+        Alert.alert(
+          'Resolution Notice',
+          'Currently locked to 720p for optimal file size control (40-55 MB for 3 minutes)',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+      
       setCurrentResolution(resolution);
-      // Save the new resolution to settings
       if (settings) {
         const newSettings = {...settings, videoQuality: resolution};
         setSettings(newSettings);
-        // Update storage
         require('../../utils/storage').saveSettings(newSettings);
       }
     }
@@ -331,9 +378,10 @@ const CameraScreen = ({onNavigateToSettings, theme}) => {
         video={true}
         audio={true}
         enableZoomGesture={false}
+        fps={30} // Force 30 FPS for bitrate control
       />
       
-      {/* Video Stamp Overlay - Only show when recording */}
+      {/* Video Stamp Overlay */}
       {settings && (
         <VideoStamp
           settings={settings}
@@ -354,14 +402,17 @@ const CameraScreen = ({onNavigateToSettings, theme}) => {
         theme={theme}
       />
       
-      {/* Recording Info Overlay (for debugging) */}
+      {/* Recording Info with File Size Estimate */}
       {isRecording && (
         <View style={styles.debugInfo}>
           <Text style={styles.debugText}>
-            Recording: {currentResolution} | {formatTime(recordingTime)}
+            🔴 {currentResolution} | {formatTime(recordingTime)}
           </Text>
           <Text style={styles.debugText}>
-            Target: {((recordingTime / 180) * 50).toFixed(1)} MB
+            Target: ~{((recordingTime * 2.5) / 60).toFixed(1)} MB
+          </Text>
+          <Text style={styles.debugTextSmall}>
+            2 Mbps • 30fps • H.264
           </Text>
         </View>
       )}
@@ -393,15 +444,24 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 100,
     left: 20,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 5,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: '#FF3B30',
   },
   debugText: {
     color: '#FFFFFF',
-    fontSize: 12,
+    fontSize: 14,
     fontFamily: 'monospace',
+    fontWeight: '600',
+  },
+  debugTextSmall: {
+    color: '#CCCCCC',
+    fontSize: 10,
+    fontFamily: 'monospace',
+    marginTop: 2,
   },
 });
 
