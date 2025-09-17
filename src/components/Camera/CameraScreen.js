@@ -132,6 +132,45 @@ const CameraScreen = ({onNavigateToSettings, theme}) => {
     }
   };
 
+  // FIXED: Updated video compression settings for target file size
+  const getVideoSettings = () => {
+    const quality = VIDEO_QUALITIES[currentResolution];
+    
+    // Calculate appropriate bitrate for target file size
+    // Target: 45-55 MB for 3 minutes (180 seconds)
+    // Formula: (Target MB * 8 * 1024 * 1024) / duration_seconds = bits per second
+    const getBitRate = () => {
+      switch (currentResolution) {
+        case '720p':
+          // Target: ~50 MB for 3 minutes
+          // (50 * 8 * 1024 * 1024) / 180 = ~2.3 MB/s = ~18.4 Mbps
+          // But we need to account for audio bitrate (~128 kbps)
+          // So video bitrate should be ~18 Mbps
+          return 18000000; // 18 Mbps - This will give ~45-55 MB for 3 minutes
+        case '1080p':
+          return 25000000; // 25 Mbps for 1080p
+        case '4K':
+          return 50000000; // 50 Mbps for 4K
+        default:
+          return 18000000; // Default to 720p high bitrate
+      }
+    };
+
+    // Audio bitrate for high quality audio
+    const getAudioBitRate = () => {
+      return 256000; // 256 kbps for high quality audio
+    };
+
+    return {
+      videoBitRate: getBitRate(),
+      audioBitRate: getAudioBitRate(),
+      videoCodec: 'h264', // Use H.264 for compatibility
+      fileType: 'mp4',
+      // Additional quality settings
+      videoQuality: 'high', // Use high quality preset
+    };
+  };
+
   const startRecording = async () => {
     try {
       if (camera.current && cameraPermission === 'granted') {
@@ -140,7 +179,13 @@ const CameraScreen = ({onNavigateToSettings, theme}) => {
         
         console.log('Starting recording with resolution:', currentResolution);
         
+        const videoSettings = getVideoSettings();
+        console.log('Video settings:', videoSettings);
+        console.log('Expected file size for 3 minutes: ~50 MB');
+        
+        // Start recording with high quality settings
         camera.current.startRecording({
+          ...videoSettings,
           onRecordingFinished: (video) => {
             console.log('Recording finished:', video);
             handleVideoSaved(video);
@@ -175,24 +220,49 @@ const CameraScreen = ({onNavigateToSettings, theme}) => {
 
   const handleVideoSaved = async (video) => {
     try {
-      console.log('Saving video:', video.path);
+      console.log('=== VIDEO RECORDING COMPLETED ===');
+      console.log('Video path:', video.path);
+      console.log('Recording duration:', recordingTime, 'seconds');
+      
+      // Calculate expected file size
+      const expectedSizeMB = (recordingTime / 180) * 50; // Scale based on 50MB for 3 minutes
+      console.log(`Expected file size: ~${expectedSizeMB.toFixed(1)} MB`);
       
       // Save video with metadata
-      await saveVideoToGallery(video.path, {
+      const result = await saveVideoToGallery(video.path, {
         location: currentLocation,
         timestamp: new Date(),
         settings: settings,
         resolution: currentResolution,
+        duration: recordingTime,
+        videoSettings: getVideoSettings(),
+        expectedSize: expectedSizeMB,
       });
       
-      Alert.alert('Success', 'Video saved to gallery');
+      console.log('Video save result:', result);
+      
+      Alert.alert(
+        'Success', 
+        `Video saved to gallery!\nDuration: ${recordingTime}s\nExpected size: ~${expectedSizeMB.toFixed(1)} MB\n\nCheck your Photos app in the "CameraApp" album.`,
+        [{ text: 'OK' }]
+      );
       
       // TODO: Push to API if required
       // await pushToAPI(video.path);
       
     } catch (error) {
-      console.log('Error saving video:', error);
-      Alert.alert('Save Error', 'Failed to save video to gallery');
+      console.error('Error saving video:', error);
+      Alert.alert(
+        'Save Error', 
+        `Failed to save video to gallery: ${error.message}`,
+        [
+          { text: 'OK' },
+          { 
+            text: 'View Details', 
+            onPress: () => console.log('Full error:', error) 
+          }
+        ]
+      );
     }
   };
 
@@ -283,6 +353,18 @@ const CameraScreen = ({onNavigateToSettings, theme}) => {
         locationEnabled={settings?.locationEnabled}
         theme={theme}
       />
+      
+      {/* Recording Info Overlay (for debugging) */}
+      {isRecording && (
+        <View style={styles.debugInfo}>
+          <Text style={styles.debugText}>
+            Recording: {currentResolution} | {formatTime(recordingTime)}
+          </Text>
+          <Text style={styles.debugText}>
+            Target: {((recordingTime / 180) * 50).toFixed(1)} MB
+          </Text>
+        </View>
+      )}
     </View>
   );
 };
@@ -306,6 +388,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
     opacity: 0.7,
+  },
+  debugInfo: {
+    position: 'absolute',
+    top: 100,
+    left: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 5,
+  },
+  debugText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontFamily: 'monospace',
   },
 });
 

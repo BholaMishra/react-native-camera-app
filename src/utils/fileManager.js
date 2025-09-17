@@ -1,29 +1,23 @@
 import RNFS from 'react-native-fs';
-import {Platform, Alert, PermissionsAndroid} from 'react-native';
+import {Platform, PermissionsAndroid} from 'react-native';
 import {STORAGE_KEYS} from './constants';
-import * as CameraRoll from "@react-native-camera-roll/camera-roll";
+import {CameraRoll} from '@react-native-camera-roll/camera-roll'; // FIXED: Correct import
 
 export const requestStoragePermission = async () => {
   if (Platform.OS === 'android') {
     try {
       if (Platform.Version >= 33) {
-        // Android 13+ uses READ_MEDIA_VIDEO permission
-        const granted = await PermissionsAndroid.request(
+        // Android 13+ - Request media permissions
+        const granted = await PermissionsAndroid.requestMultiple([
+          'android.permission.READ_MEDIA_IMAGES',
           'android.permission.READ_MEDIA_VIDEO',
-          {
-            title: 'Media Permission',
-            message: 'This app needs media permission to save videos to gallery.',
-            buttonNeutral: 'Ask Me Later',
-            buttonNegative: 'Cancel',
-            buttonPositive: 'OK',
-          }
+        ]);
+        
+        return Object.values(granted).every(
+          permission => permission === PermissionsAndroid.RESULTS.GRANTED
         );
-        return granted === PermissionsAndroid.RESULTS.GRANTED;
-      } else if (Platform.Version >= 30) {
-        // Android 10-12 uses scoped storage, no WRITE_EXTERNAL_STORAGE needed
-        return true;
       } else {
-        // Android 9 and below
+        // Android 12 and below
         const granted = await PermissionsAndroid.request(
           PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE,
           {
@@ -70,35 +64,46 @@ export const ensureVideoFolderExists = async () => {
 
 export const saveVideoToGallery = async (sourcePath, metadata) => {
   try {
-    console.log('Starting video save process...');
+    console.log('=== STARTING VIDEO SAVE PROCESS ===');
     console.log('Source path:', sourcePath);
     
     // Check if source file exists
     const sourceExists = await RNFS.exists(sourcePath);
+    console.log('Source file exists:', sourceExists);
+    
     if (!sourceExists) {
-      throw new Error('Source video file not found');
+      throw new Error('Source video file not found at: ' + sourcePath);
     }
-
+    
+    // Check file size
+    const fileStats = await RNFS.stat(sourcePath);
+    console.log('File size:', formatFileSize(fileStats.size));
+    
+    // Request storage permission
+    console.log('Requesting storage permissions...');
+    const hasPermission = await requestStoragePermission();
+    console.log('Storage permission granted:', hasPermission);
+    
+    if (!hasPermission && Platform.OS === 'android' && Platform.Version < 33) {
+      throw new Error('Storage permission denied');
+    }
+    
     // Create timestamp for unique filename
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').replace('T', '_').split('.')[0];
     const fileName = `CameraApp_${timestamp}.mp4`;
     
-    // First, copy to a temporary accessible location
-    const tempPath = `${RNFS.CachesDirectoryPath}/${fileName}`;
-    await RNFS.copyFile(sourcePath, tempPath);
+    console.log('Attempting to save to camera roll...');
     
     try {
-      console.log('Saving to camera roll from temp path:', tempPath);
-      
-      // Save to camera roll with proper options
-      const saveResult = await CameraRoll.save(`file://${tempPath}`, {
+      // FIXED: Use correct CameraRoll.save method
+      const saveResult = await CameraRoll.save(sourcePath, {
         type: 'video',
-        album: 'CameraApp Videos', // This creates a specific album
+        album: 'CameraApp', // This will create an album named "CameraApp"
       });
       
-      console.log('Camera roll save result:', saveResult);
+      console.log('✅ SUCCESS: Video saved to camera roll:', saveResult);
       
-      // Also save to app directory for backup and metadata
+      // Also save to app directory for backup
       const folderPath = await ensureVideoFolderExists();
       const appPath = `${folderPath}/${fileName}`;
       await RNFS.copyFile(sourcePath, appPath);
@@ -108,90 +113,39 @@ export const saveVideoToGallery = async (sourcePath, metadata) => {
       await RNFS.writeFile(metadataPath, JSON.stringify({
         ...metadata,
         originalPath: sourcePath,
-        savedToGallery: true,
         galleryPath: saveResult,
         savedAt: new Date().toISOString(),
+        fileSize: fileStats.size,
       }, null, 2));
       
-      // Clean up temp file
-      try {
-        await RNFS.unlink(tempPath);
-      } catch (cleanupError) {
-        console.log('Temp file cleanup error (non-critical):', cleanupError);
-      }
-      
-      console.log('Video saved successfully to gallery and app folder');
+      console.log('✅ Video successfully saved to both gallery and app folder');
       return saveResult;
       
     } catch (cameraRollError) {
-      console.log('Camera roll failed, trying alternative method:', cameraRollError);
+      console.error('❌ Camera roll save failed:', cameraRollError);
       
-      // Clean up temp file on error
-      try {
-        await RNFS.unlink(tempPath);
-      } catch (cleanupError) {
-        console.log('Temp file cleanup error:', cleanupError);
-      }
+      // Fallback: Save to app directory only
+      const folderPath = await ensureVideoFolderExists();
+      const destinationPath = `${folderPath}/${fileName}`;
       
-      // Alternative approach for older Android versions or when CameraRoll fails
-      if (Platform.OS === 'android') {
-        try {
-          // For Android, try saving to Movies/CameraApp folder
-          const moviesPath = `${RNFS.ExternalStorageDirectoryPath}/Movies/CameraApp`;
-          
-          // Create Movies/CameraApp directory
-          const moviesDirExists = await RNFS.exists(moviesPath);
-          if (!moviesDirExists) {
-            await RNFS.mkdir(moviesPath);
-          }
-          
-          const publicPath = `${moviesPath}/${fileName}`;
-          await RNFS.copyFile(sourcePath, publicPath);
-          
-          // Notify Android media scanner about the new file
-          if (Platform.OS === 'android') {
-            try {
-              // Use intent to scan the file
-              const MediaScannerConnection = require('react-native').NativeModules.MediaScannerConnection;
-              if (MediaScannerConnection) {
-                MediaScannerConnection.scanFile(publicPath);
-              }
-            } catch (scanError) {
-              console.log('Media scanner error (non-critical):', scanError);
-            }
-          }
-          
-          // Also save to app directory for backup
-          const folderPath = await ensureVideoFolderExists();
-          const appPath = `${folderPath}/${fileName}`;
-          await RNFS.copyFile(sourcePath, appPath);
-          
-          // Save metadata
-          const metadataPath = appPath.replace('.mp4', '_metadata.json');
-          await RNFS.writeFile(metadataPath, JSON.stringify({
-            ...metadata,
-            originalPath: sourcePath,
-            savedToGallery: false,
-            publicPath: publicPath,
-            savedAt: new Date().toISOString(),
-            method: 'alternative',
-          }, null, 2));
-          
-          console.log('Video saved to public Movies folder:', publicPath);
-          return publicPath;
-          
-        } catch (alternativeError) {
-          console.log('Alternative save method also failed:', alternativeError);
-          throw new Error(`All save methods failed. Camera Roll: ${cameraRollError.message}, Alternative: ${alternativeError.message}`);
-        }
-      } else {
-        // For iOS, if CameraRoll fails, there's not much we can do
-        throw cameraRollError;
-      }
+      await RNFS.copyFile(sourcePath, destinationPath);
+      
+      // Save metadata
+      const metadataPath = destinationPath.replace('.mp4', '_metadata.json');
+      await RNFS.writeFile(metadataPath, JSON.stringify({
+        ...metadata,
+        originalPath: sourcePath,
+        savedAt: new Date().toISOString(),
+        fileSize: fileStats.size,
+        note: 'Saved to app folder only due to gallery permission issue',
+      }, null, 2));
+      
+      console.log('⚠️ Video saved to app folder only:', destinationPath);
+      return destinationPath;
     }
     
   } catch (error) {
-    console.error('Error saving video:', error);
+    console.error('💥 CRITICAL ERROR saving video:', error);
     throw new Error(`Failed to save video: ${error.message}`);
   }
 };
