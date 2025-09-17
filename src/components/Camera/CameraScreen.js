@@ -285,8 +285,7 @@ const CameraScreen = ({onNavigateToSettings, theme}) => {
       
       Alert.alert(
         'Success', 
-        `Video saved to gallery!\nDuration: ${Math.floor(recordingTime/60)}:${(recordingTime%60).toString().padStart(2,'0')}\nTarget: ~${expectedSizeMB.toFixed(1)} MB\n\nCheck your Photos app in the "CameraApp" album.`,
-        [{ text: 'OK' }]
+        `Video saved to gallery`
       );
       
     } catch (error) {
@@ -409,10 +408,7 @@ const CameraScreen = ({onNavigateToSettings, theme}) => {
             🔴 {currentResolution} | {formatTime(recordingTime)}
           </Text>
           <Text style={styles.debugText}>
-            Target: ~{((recordingTime * 2.5) / 60).toFixed(1)} MB
-          </Text>
-          <Text style={styles.debugTextSmall}>
-            2 Mbps • 30fps • H.264
+            Target: {((recordingTime * 2.5) / 60).toFixed(1)} MB
           </Text>
         </View>
       )}
